@@ -1,0 +1,149 @@
+Program.Sub.Preflight.Start
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+v.Local.ssql.Declare(String)
+v.Local.spart.Declare(String)
+v.Local.sfile.Declare(string)
+Variable.Local.sRet.Declare(string)
+Variable.Local.sTemp.Declare(string)
+Variable.Local.sTitles.Declare(string)
+Variable.Local.iWidths.Declare(long)
+v.Local.squery.Declare(String)
+
+'This project will allow a user to select a customer to attach to an existing Cause and Corrective Action.
+'Coded by: WAW
+'Date: 10/23/2017
+'Quality>File>Create Quality record from Inventory
+
+F.ODBC.Connection!conx.OpenConnection(V.Ambient.PDSN,V.Ambient.PUser,V.Ambient.PPass)
+f.Intrinsic.String.Build("{0}\{1}",v.Caller.FilesDir,"4785Cust",v.Local.sfile)
+
+'Create NCMR button - Populate
+f.Intrinsic.Control.If(v.Caller.Hook,=,14761)
+
+	'set the script 1 button as a custom customer browser
+	v.Passed.000019.Set("Customer")
+f.Intrinsic.Control.EndIf
+
+'script 1 browser
+f.Intrinsic.Control.If(v.Caller.Hook,=,14764)
+	'have a browser for the customer name/number
+	
+	'check to make sure the work order is populated
+	f.Intrinsic.Control.If(v.Passed.000022,=,"")
+		F.Intrinsic.UI.Msgbox("Please select a Work Order")
+		f.Intrinsic.Control.callsub(unload)
+	f.Intrinsic.Control.EndIf
+	
+	f.Intrinsic.String.GSSPartString(v.passed.000010,v.passed.000039,v.Local.spart)
+
+	'set the type ahead
+	Function.Intrinsic.UI.SetBrowserHotTypeAhead(True)
+	'build the custom browser
+	Function.Intrinsic.String.Split("Part*!*Location*!*Customer*!*Name_Customer*!*Customer_Part","*!*",variable.local.sTitles)
+	Function.Intrinsic.String.Split("2000*!*800*!*2000*!*2000*!*2000","*!*",variable.local.iWidths)
+
+	f.Intrinsic.string.Build("Select V_INV_CROSS_REF.Part, V_INV_CROSS_REF.Location, V_INV_CROSS_REF.Customer, V_CUSTOMER_MASTER.NAME_CUSTOMER, V_INV_CROSS_REF.Customer_Part from V_INV_CROSS_REF left join V_CUSTOMER_MASTER on V_INV_CROSS_REF.CUSTOMER = V_CUSTOMER_MASTER.CUSTOMER where V_INV_CROSS_REF.PART = '{0}'",v.Local.spart.trim,v.Local.squery)
+	
+	Function.Intrinsic.UI.Browser("Select a Customer","conx",v.Local.squery,Variable.Local.sTitles,Variable.Local.iWidths,Variable.Local.sRet)
+	
+	'inform the user no customer was selected
+	Function.Intrinsic.Control.If(Variable.Local.sRet,"=","***CANCEL***")
+		 Function.Intrinsic.UI.Msgbox("No customer was selected!")
+	Function.Intrinsic.Control.Else
+		'otherwise split it and either add or update the info to the custom table
+		 Function.Intrinsic.String.Split(Variable.Local.sRet,"*!*",Variable.Local.sRet)
+		 
+		f.Intrinsic.String.Build("select CUSTOMER from GCG_4785_Cause where WO = '{0}'",v.Passed.000022,v.Local.ssql)
+		F.ODBC.Connection!conx.openrecordsetrw("rst",V.Local.ssql)	
+		F.Intrinsic.Control.If(V.ODBC.conx!rst.EOF,=,True)
+			F.Intrinsic.String.Build("Insert Into GCG_4785_Cause (WO, CUSTOMER) Values ('{0}', '{1}')", v.Passed.000022,v.Local.sRet(2),V.Local.squery)
+			F.ODBC.Connection!conx.Execute(V.Local.squery)
+		f.Intrinsic.Control.Else
+			F.Intrinsic.String.Build("Update GCG_4785_Cause Set CUSTOMER = '{0}' where WO = '{1}'", v.Local.sRet(2),v.Passed.000022,V.Local.squery)
+			F.ODBC.Connection!conx.Execute(V.Local.squery)	
+		f.Intrinsic.Control.EndIf
+		f.ODBC.conx!rst.Close
+	Function.Intrinsic.Control.EndIf
+f.Intrinsic.Control.EndIf
+
+'Create NCMR button - Pre Save
+f.Intrinsic.Control.If(v.Caller.Hook,=,14762)
+
+	'core program checks for this, don't want the custom program to continue if sequence is blank
+	f.Intrinsic.Control.If(v.Passed.000051,=,"")
+		f.Intrinsic.Control.callsub(unload)
+	f.Intrinsic.Control.EndIf
+	
+	'check to make sure the work order is populated
+	f.Intrinsic.Control.If(v.Passed.000022,=,"")
+		F.Intrinsic.UI.Msgbox("Please select a Work Order")
+		f.Intrinsic.Control.callsub(unload)
+	f.Intrinsic.Control.EndIf
+	
+	'check to make sure the customer has been added 
+	f.Intrinsic.String.Build("select CUSTOMER from GCG_4785_Cause where WO = '{0}'",v.Passed.000022,v.Local.ssql)
+	f.ODBC.Connection!conx.executeandreturn(v.Local.ssql,v.Local.sret)
+	f.Intrinsic.Control.If(v.Local.sRet.Trim,=,"")
+		F.Intrinsic.UI.Msgbox("Please select a Customer")
+		f.Intrinsic.Control.callsub(unload)
+	f.Intrinsic.Control.EndIf
+	
+	'combine the part/rev
+	f.Intrinsic.String.GSSPartString(v.Passed.000010,v.Passed.000039,v.Local.spart)
+
+	f.Intrinsic.string.Build("Select QTY_ONHAND from V_INVENTORY_MSTR where PART = '{0}' and LOCATION= '{1}'",v.Local.spart,v.Passed.000054,v.Local.ssql)
+	f.ODBC.Connection!conx.executeandreturn(v.Local.ssql,v.Local.sret)
+	'check to make sure a qty was found
+	f.Intrinsic.Control.If(v.Local.sret,<>,"")
+		f.Intrinsic.Control.If(v.Local.sret,<,v.Passed.000058)
+			f.Intrinsic.Control.callsub(unload)
+		f.Intrinsic.Control.EndIf
+	f.Intrinsic.Control.EndIf
+
+	'see if a customer was saved for that WO
+	f.Intrinsic.string.Build("Select Customer from GCG_4785_Cause where WO = '{0}'",v.passed.000022,v.Local.ssql)
+	f.ODBC.Connection!conx.executeandreturn(v.Local.ssql,v.Local.sret)		
+	f.Intrinsic.Control.If(v.Local.sret,<>,"")
+		'update the order header for the Cause and COrrective action records
+		f.Intrinsic.String.Build("Update JOB_HEADER set CUSTOMER = '{0}' where JOB = '{1}' and SUFFIX = '{2}'",v.Local.sRet,v.Passed.000022,v.Passed.000037,v.Local.ssql)
+		f.ODBC.Connection!conx.execute(v.Local.ssql)
+	f.Intrinsic.Control.EndIf
+	
+f.Intrinsic.Control.EndIf
+
+'call the unload
+f.Intrinsic.Control.CallSub(unload)
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4785_Cause.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	f.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Main.End
+
+Program.Sub.Unload.Start
+F.Intrinsic.Control.SetErrorHandler("unload_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+'Close the connection and end the program
+F.ODBC.Connection!conx.Close
+F.Intrinsic.Control.End
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("unload_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4785_Cause.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	f.Intrinsic.Control.End
+Function.Intrinsic.Control.EndIf
+
+Program.Sub.Unload.End
