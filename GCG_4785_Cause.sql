@@ -1,0 +1,3 @@
+CREATE TABLE "GCG_4785_Cause"(
+ "WO" CHAR(7),
+ "CUSTOMER" CHAR(6));
